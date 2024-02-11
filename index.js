@@ -4,12 +4,14 @@ import path from 'path'
 import { moveFile } from 'move-file'
 import fsP from 'node:fs/promises'
 import { exiftool } from 'exiftool-vendored'
+import { createObjectCsvWriter } from 'csv-writer';
 
 chromium.use(stealth())
 
 const timeoutValue = 300000
 const userDataDir = './session'
 const downloadPath = './download'
+const indexPath = './index.csv'
 
 let headless = true
 
@@ -39,6 +41,32 @@ const saveProgress = async (page) => {
     console.log('Current URL does not start with https://photos.google.com, not saving progress.');
   }
 }
+
+const saveRefInCSV = async (filename, url, date) => {
+  const csvWriter = createObjectCsvWriter({
+    path: indexPath,
+    header: [
+      { id: 'filename', title: 'File' },
+      { id: 'url', title: 'URL' },
+      { id: 'date', title: 'Date' },
+      { id: 'dateType', title: 'Date Type' }
+    ],
+    append: true // Append data to the existing file
+  });
+
+  const data = [
+    {
+      filename,
+      url,
+      date: `${date.year}/${date.month}`,
+      dateType: date.dateType
+    }
+  ];
+
+  await csvWriter.writeRecords(data);
+};
+
+
 const getMonthAndYear = async (metadata, page) => {
   let year = 1970
   let month = 1
@@ -155,13 +183,17 @@ const downloadPhoto = async (page, overwrite = false) => {
   const year = date.year
   const month = date.month
   try {
-    await moveFile(temp, `${downloadPath}/${year}/${month}/${fileName}`, { overwrite })
+    const filePath = `${downloadPath}/${year}/${month}/${fileName}`
+    await moveFile(temp, filePath, { overwrite })
     console.log('Download Complete:', `${year}/${month}/${fileName}`)
+    await saveRefInCSV(filePath, page.url(), date);
   } catch (error) {
     const randomNumber = Math.floor(Math.random() * 1000000)
     const fileName = await download.suggestedFilename().replace(/(\.[\w\d_-]+)$/i, `_${randomNumber}$1`)
-    await moveFile(temp, `${downloadPath}/${year}/${month}/${fileName}`)
+    const filePath = `${downloadPath}/${year}/${month}/${fileName}`
+    await moveFile(temp, filePath)
     console.log('Download Complete:', `${year}/${month}/${fileName}`)
+    await saveRefInCSV(filePath, page.url(), date);
   }
 }
 
